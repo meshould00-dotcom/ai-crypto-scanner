@@ -11,20 +11,44 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - uses: actions/checkout@v3
+      - name: Checkout
+        uses: actions/checkout@v3
+        with:
+          fetch-depth: 0
 
       - name: Setup Node
         uses: actions/setup-node@v3
         with:
           node-version: 18
 
-      - name: Install Expo CLI
-        run: npm install -g eas-cli
+      - name: Detect project directory with package.json
+        id: detect
+        run: |
+          echo "Searching for package.json..."
+          FILE=$(git ls-files '*package.json' | head -n1 || true)
+          if [ -z "$FILE" ]; then
+            FILE=$(find . -maxdepth 4 -type f -name 'package.json' -not -path './node_modules/*' -print -quit || true)
+          fi
+          if [ -z "$FILE" ]; then
+            echo "::error::package.json not found in repo"
+            exit 1
+          fi
+          DIR=$(dirname "$FILE")
+          echo "Found package.json at: $FILE (project dir: $DIR)"
+          echo "project_dir=$DIR" >> $GITHUB_OUTPUT
+
+      - name: Setup environment (Node global tools)
+        run: |
+          npm install -g eas-cli
 
       - name: Install dependencies
-        run: npm install
+        run: |
+          npm ci
+        working-directory: ${{ steps.detect.outputs.project_dir }}
 
       - name: Build APK
-        run: eas build --platform android --profile preview --non-interactive
+        run: |
+          eas build --platform android --profile preview --non-interactive
+        working-directory: ${{ steps.detect.outputs.project_dir }}
         env:
           EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
